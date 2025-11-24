@@ -2,7 +2,6 @@ package com.example.oauthgoogleloginexample.service;
 
 import com.example.oauthgoogleloginexample.domain.RefreshToken;
 import com.example.oauthgoogleloginexample.domain.UserAccount;
-import com.example.oauthgoogleloginexample.domain.UserRole;
 import com.example.oauthgoogleloginexample.dto.auth.GoogleLoginRequest;
 import com.example.oauthgoogleloginexample.dto.auth.LoginRequest;
 import com.example.oauthgoogleloginexample.dto.auth.SignUpRequest;
@@ -10,6 +9,8 @@ import com.example.oauthgoogleloginexample.dto.auth.TokenResponse;
 import com.example.oauthgoogleloginexample.repository.RefreshTokenRepository;
 import com.example.oauthgoogleloginexample.repository.UserAccountRepository;
 import com.example.oauthgoogleloginexample.security.JwtTokenProvider;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,12 +19,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.Instant;
-import java.util.UUID;
-
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
     private final UserAccountRepository userAccountRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
@@ -40,18 +39,24 @@ public class AuthService {
         UserAccount account = UserAccount.builder()
                 .username(request.getUsername())
                 .password(passwordEncoder.encode(request.getPassword()))
-                .role(UserRole.USER)
+                // role 값은 UserAccount의 @PrePersist 기본 설정에 맡깁니다.
                 .build();
+
         userAccountRepository.save(account);
     }
 
     @Transactional
     public TokenResponse login(LoginRequest request) {
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+                new UsernamePasswordAuthenticationToken(
+                        request.getUsername(),
+                        request.getPassword()
+                )
         );
+
         UserAccount user = userAccountRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new IllegalArgumentException("invalid username or password"));
+
         return issueTokens(user);
     }
 
@@ -61,40 +66,33 @@ public class AuthService {
             throw new IllegalArgumentException("idToken is required");
         }
 
-        GoogleOAuthService.GoogleUser googleUser = googleOAuthService.verifyIdToken(request.getIdToken());
+        GoogleOAuthService.GoogleUser googleUser =
+                googleOAuthService.verifyIdToken(request.getIdToken());
+
         UserAccount user = userAccountRepository.findByUsername(googleUser.email())
                 .orElseGet(() -> registerGoogleUser(googleUser));
+
         return issueTokens(user);
     }
 
     @Transactional
-    public TokenResponse refresh(String refreshToken) {
-        RefreshToken stored = refreshTokenRepository.findByToken(refreshToken)
-                .orElseThrow(() -> new IllegalArgumentException("invalid refresh token"));
-        if (stored.isExpired() || stored.isRevoked()) {
-            throw new IllegalArgumentException("expired or revoked refresh token");
-        }
-        UserAccount user = stored.getUser();
-        return issueTokens(user);
-    }
-
-    @Transactional
-    public void logout(String refreshToken) {
-        refreshTokenRepository.findByToken(refreshToken).ifPresent(RefreshToken::revoke);
-    }
-
-    private TokenResponse issueTokens(UserAccount user) {
+    public TokenResponse issueTokens(UserAccount user) {
         String access = jwtTokenProvider.generateAccessToken(user.getUsername());
         String refresh = jwtTokenProvider.generateRefreshToken(user.getUsername());
 
+        // 기존 리프레시 토큰 삭제 후 새 토큰 발급
         refreshTokenRepository.deleteByUser(user);
 
         RefreshToken entity = RefreshToken.builder()
                 .token(refresh)
                 .user(user)
-                .expiresAt(Instant.now().plusSeconds(jwtTokenProvider.getRefreshValiditySeconds()))
-                .revoked(false)
+                .expiresAt(
+                        Instant.now()
+                                .plusSeconds(jwtTokenProvider.getRefreshValiditySeconds())
+                )
+                // revoked 필드는 현재 로직에서 사용하지 않으므로 명시적으로 세팅하지 않습니다.
                 .build();
+
         refreshTokenRepository.save(entity);
 
         return TokenResponse.builder()
@@ -109,8 +107,9 @@ public class AuthService {
         UserAccount account = UserAccount.builder()
                 .username(googleUser.email())
                 .password(passwordEncoder.encode(UUID.randomUUID().toString()))
-                .role(UserRole.USER)
+                // role 값은 UserAccount의 @PrePersist 기본 설정에 맡깁니다.
                 .build();
+
         return userAccountRepository.save(account);
     }
 }

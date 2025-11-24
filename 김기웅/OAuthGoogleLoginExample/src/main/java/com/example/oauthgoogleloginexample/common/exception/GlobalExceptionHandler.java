@@ -17,12 +17,6 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("NOT_FOUND", ex.getMessage()));
     }
 
-    @ExceptionHandler(DeleteFailureException.class)
-    public ResponseEntity<ErrorResponse> handleDeleteFailure(DeleteFailureException ex) {
-        return ResponseEntity.status(CONFLICT)
-                .body(ErrorResponse.of("DELETE_FAILURE", ex.getMessage()));
-    }
-
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleInvalid(MethodArgumentNotValidException ex) {
         final String message = ex.getBindingResult().getFieldErrors().stream()

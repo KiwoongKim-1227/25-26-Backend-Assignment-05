@@ -7,11 +7,10 @@ import com.example.oauthgoogleloginexample.dto.issue.IssueCreateRequest;
 import com.example.oauthgoogleloginexample.dto.issue.IssueResponse;
 import com.example.oauthgoogleloginexample.dto.issue.IssueUpdateRequest;
 import com.example.oauthgoogleloginexample.repository.IssueRepository;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -23,14 +22,17 @@ public class IssueService {
     @Transactional
     public IssueResponse createUnderProject(Long projectId, IssueCreateRequest request) {
         Project project = projectService.getEntity(projectId);
+
         Issue issue = Issue.of(
                 request.getTitle(),
                 request.getDescription(),
                 request.getStatus(),
                 request.getPriority()
         );
+
         project.addIssue(issue);
         Issue saved = issueRepository.save(issue);
+
         return IssueResponse.from(saved);
     }
 
@@ -38,12 +40,14 @@ public class IssueService {
     public IssueResponse findById(Long id) {
         Issue issue = issueRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("이슈를 찾을 수 없습니다. id=" + id));
+
         return IssueResponse.from(issue);
     }
 
     @Transactional(readOnly = true)
     public List<IssueResponse> findAll() {
-        return issueRepository.findAllWithProject().stream()
+        return issueRepository.findAllWithProject()
+                .stream()
                 .map(IssueResponse::from)
                 .toList();
     }
@@ -52,12 +56,15 @@ public class IssueService {
     public IssueResponse update(Long id, IssueUpdateRequest request) {
         Issue issue = issueRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("이슈를 찾을 수 없습니다. id=" + id));
+
+        // IssueUpdateRequest는 record이므로 필드 접근은 title()/description()/status()/priority() 형태입니다.
         issue.change(
-                request.getTitle(),
-                request.getDescription(),
-                request.getStatus(),
-                request.getPriority()
+                request.title(),
+                request.description(),
+                request.status(),
+                request.priority()
         );
+
         return IssueResponse.from(issue);
     }
 
@@ -65,6 +72,7 @@ public class IssueService {
     public void delete(Long id) {
         Issue issue = issueRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("삭제하려는 이슈가 존재하지 않습니다. id=" + id));
+
         issueRepository.delete(issue);
     }
 }
